@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система поддержки</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .hidden { display: none !important; }
+        .message-bubble { max-width: 70%; word-wrap: break-word; }
+        .clickable-ticket { cursor: pointer; transition: all 0.2s; }
+        .clickable-ticket:hover { transform: translateX(5px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        #chat-messages { height: 500px; overflow-y: auto; background: #f8f9fa; }
+        .status-badge { font-size: 0.75rem; padding: 3px 8px; }
+        .logout-btn { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+        .ticket-preview { font-size: 0.85rem; color: #6c757d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .list-group-item.active-ticket { background-color: #e7f1ff; border-left: 4px solid #0d6efd; }
+        
+        .chart-container {
+            position: relative;
+            height: 200px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<button id="logout-btn" onclick="logout()" class="btn btn-outline-danger btn-sm logout-btn hidden">🚪 Выйти</button>
+
+<div class="container mt-5">
+    <!-- Секция авторизации -->
+    <div id="auth-section" class="mx-auto" style="max-width: 450px;">
+        <div class="card shadow-lg border-0 rounded-4">
+            <div class="card-body p-4">
+                <h3 id="auth-title" class="text-center mb-4 fw-bold text-primary">Вход в систему</h3>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Логин</label>
+                    <input type="text" id="username" class="form-control form-control-lg" placeholder="Введите логин">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Пароль</label>
+                    <input type="password" id="password" class="form-control form-control-lg" placeholder="Введите пароль">
+                </div>
+                <button id="auth-btn" class="btn btn-primary btn-lg w-100 shadow-sm">Войти</button>
+                <p class="text-center mt-4 mb-0">
+                    <a href="#" id="toggle-link" class="text-decoration-none">Нет аккаунта? Регистрация</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Клиентская секция -->
+    <div id="client-section" class="hidden">
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">📝 Новое обращение</h5>
+                        <textarea id="ticket-text" class="form-control mb-2" rows="3" placeholder="Опишите вашу проблему..."></textarea>
+                        <button onclick="createTicket()" class="btn btn-success w-100">Отправить</button>
+                        <hr>
+                        <h5 class="card-title mb-3">📋 Мои обращения</h5>
+                        <div id="client-tickets-list" class="list-group" style="max-height: 500px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div id="client-chat-placeholder"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Секция поддержки -->
+    <div id="support-section" class="hidden">
+        <div id="admin-dashboard-panel" class="hidden mb-4">
+            <div class="card border-primary shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Панель управления администратора</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-3 text-center border-end">
+                            <h6 class="text-muted">Всего обращений</h6>
+                            <h2 id="stats-total-val" class="display-6 fw-bold">-</h2>
+                        </div>
+                        <div class="col-md-3 text-center border-end">
+                            <h6 class="text-muted">Точность ИИ</h6>
+                            <h2 id="stats-accuracy-val" class="display-6 fw-bold text-success">-</h2>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-center text-muted mb-2">Загрузка отделов</h6>
+                                    <div class="chart-container" style="height: 180px;">
+                                        <canvas id="deptChartActive"></canvas>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-center text-muted mb-2">Обращения за всё время</h6>
+                                    <div class="chart-container" style="height: 180px;">
+                                        <canvas id="deptChartAll"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Список обращений</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadSupportTickets()">🔄</button>
+                    </div>
+                    <div id="support-tickets-list" class="list-group list-group-flush" style="max-height: 600px; overflow-y: auto;">
+                        <div class="text-muted text-center p-3">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8" id="support-chat-placeholder">
+                <div id="chat-placeholder" class="text-center mt-5">
+                    <div class="text-muted">Выберите обращение из списка слева, чтобы начать работу</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Общее окно чата -->
+    <div id="common-chat-window" class="hidden">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0" id="chat-ticket-id">Чат #---</h5>
+                    <small id="chat-ticket-status" class="text-light">Статус: загрузка...</small>
+                </div>
+                <div id="support-actions" class="hidden">
+                    <button class="btn btn-sm btn-warning me-2" onclick="openReassignModal()">🔀 Переадресовать</button>
+                    <button id="close-ticket-btn" class="btn btn-sm btn-danger" onclick="closeTicket()">🔒 Завершить работу</button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="chat-messages" class="p-3">
+                    <div class="text-center text-muted py-5">Выберите тикет для начала диалога</div>
+                </div>
+                <div class="p-3 border-top">
+                    <div class="input-group">
+                        <input type="text" id="chat-input" class="form-control" placeholder="Введите сообщение...">
+                        <button class="btn btn-primary" onclick="sendReply()">Отправить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно переадресации -->
+<div class="modal fade" id="reassignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Переадресация тикета</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Выберите отделы для переадресации:</p>
+                <div id="dept-checkboxes">
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Ассортимент"> Ассортимент</div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Акции"> Акции</div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Доставка"> Доставка</div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Цена"> Цена</div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Качество продукта"> Качество продукта</div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Навигация по каталогу"> Навигация</div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" value="Проблемы с оплатой"> Проблемы с оплатой</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="confirmReassignment()">Переслать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let accessToken = "";
+    let userRole = "";
+    let activeTicketId = null;
+    let activeTicketStatus = "";
+    let isLoginMode = true;
+    let messagesInterval = null;
+    let ticketsRefreshInterval = null;
+    let deptChart = null;
+    let reassignModalInstance = null;
+
+    window.onload = () => {
+        const savedToken = localStorage.getItem('accessToken');
+        if (savedToken) {
+            accessToken = savedToken;
+            fetch('/auth/me', { headers: { 'Authorization': `Bearer ${accessToken}` } })
+            .then(res => { if (res.ok) return res.json(); throw new Error('Token expired'); })
+            .then(data => {
+                userRole = data.role;
+                if (userRole === 'user') showClientUI();
+                else if (userRole === 'support' || userRole === 'admin') showSupportUI();
+                else logout();
+            })
+            .catch(() => logout());
+        }
+    };
+
+    function showClientUI() {
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('client-section').classList.remove('hidden');
+        document.getElementById('support-section').classList.add('hidden');
+        document.getElementById('logout-btn').classList.remove('hidden');
+        loadClientTickets();
+        startAutoRefresh();
+        startTicketsRefresh();
+    }
+
+    function showSupportUI() {
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('client-section').classList.add('hidden');
+        document.getElementById('support-section').classList.remove('hidden');
+        document.getElementById('logout-btn').classList.remove('hidden');
+
+        if (userRole === 'admin') {
+            document.getElementById('admin-dashboard-panel').classList.remove('hidden');
+            refreshAdminStats();
+        }
+        loadSupportTickets();
+        startAutoRefresh();
+        startTicketsRefresh();
+    }
+
+    let deptChartActive = null;
+    let deptChartAll = null;
+
+// Обновите функцию внутри refreshAdminStats
+    async function refreshAdminStats() {
+        try {
+            const statsRes = await fetch('/admin/dashboard/stats', {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            const stats = await statsRes.json();
+            document.getElementById('stats-total-val').innerText = stats.total_tickets;
+            document.getElementById('stats-accuracy-val').innerText = stats.ai_accuracy_estimate;
+
+            const loadRes = await fetch('/admin/dashboard/department_load', {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            const loadData = await loadRes.json();
+            
+            // Теперь вызываем обновление двух диаграмм
+            updateCharts(loadData.active, loadData.all_time);
+        } catch (e) { console.error("Ошибка статистики:", e); }
+    }
+
+    function updateCharts(activeData, allTimeData) {
+        const commonColors = ['#0d6efd', '#198754', '#ffc107', '#dc3545', '#6610f2', '#6c757d'];
+
+        // 1. Круговая диаграмма (Активные)
+        const ctxActive = document.getElementById('deptChartActive').getContext('2d');
+        if (deptChartActive) deptChartActive.destroy();
+        deptChartActive = new Chart(ctxActive, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(activeData),
+                datasets: [{
+                    data: Object.values(activeData),
+                    backgroundColor: commonColors
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } } 
+            }
+        });
+
+        // 2. Столбчатая диаграмма (Все)
+        const ctxAll = document.getElementById('deptChartAll').getContext('2d');
+        if (deptChartAll) deptChartAll.destroy();
+        deptChartAll = new Chart(ctxAll, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(allTimeData),
+                datasets: [{
+                    label: 'Заявок',
+                    data: Object.values(allTimeData),
+                    backgroundColor: '#6c757d'
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+
+    async function handleAuth() {
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        
+        if (!username || !password) return alert("Заполните все поля");
+
+        if (isLoginMode) {
+            // Логика входа остается через URLSearchParams (для OAuth2 совместимости)
+            const params = new URLSearchParams();
+            params.append('username', username); 
+            params.append('password', password);
+            await performAuth('/auth/login', params, { 'Content-Type': 'application/x-www-form-urlencoded' });
+        } else {
+    // Добавляем поле role, чтобы Pydantic на сервере был доволен
+    const registrationData = { 
+        username: username, 
+        password: password,
+        role: "user" // или "support", смотря кого вы регистрируете по умолчанию
+    };
+    
+    const body = JSON.stringify(registrationData);
+    await performAuth('/auth/register', body, { 'Content-Type': 'application/json' });
+}
+    }
+
+    async function performAuth(url, body, headers) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: body
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || "Ошибка");
+
+            if (isLoginMode) {
+                accessToken = data.access_token;
+                localStorage.setItem('accessToken', accessToken);
+                userRole = data.role;
+                userRole === 'user' ? showClientUI() : showSupportUI();
+            } else {
+                alert("Регистрация успешна!");
+                document.getElementById('toggle-link').click();
+            }
+        } catch (err) { alert(err.message); }
+    }
+
+// Привязываем новую функцию к кнопке
+document.getElementById('auth-btn').onclick = handleAuth;
+
+    function logout() {
+        if (messagesInterval) clearInterval(messagesInterval);
+        if (ticketsRefreshInterval) clearInterval(ticketsRefreshInterval);
+        if (deptChart) { deptChart.destroy(); deptChart = null; }
+        accessToken = ""; userRole = ""; activeTicketId = null;
+        localStorage.removeItem('accessToken');
+        location.reload();
+    }
+
+    async function createTicket() {
+        const text = document.getElementById('ticket-text').value;
+        if (!text) return alert("Введите текст");
+        await fetch('/tickets/create', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        document.getElementById('ticket-text').value = '';
+        loadClientTickets();
+    }
+
+    async function loadClientTickets() {
+    try {
+        const res = await fetch('/tickets/my', { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        const tickets = await res.json();
+        const container = document.getElementById('client-tickets-list');
+        
+        if (!tickets || tickets.length === 0) {
+            container.innerHTML = '<div class="text-muted text-center p-3">У вас пока нет обращений</div>';
+            return;
+        }
+
+        container.innerHTML = tickets.map(t => `
+            <div onclick="openChat(${t.id}, '${t.status}', 'user')" 
+                class="list-group-item list-group-item-action clickable-ticket mb-2 rounded border-start border-4 ${activeTicketId === t.id ? 'active-ticket' : ''} ${t.status === 'closed' ? 'border-secondary' : 'border-success'}">
+                <div class="d-flex justify-content-between">
+                    <strong class="text-primary">#${t.id}</strong>
+                    <span class="badge ${getStatusClass(t.status)}">${t.status}</span>
+                </div>
+                <div class="ticket-preview mt-1 fw-medium">${escapeHtml(t.text || 'Без темы')}</div>
+            </div>
+        `).join('');
+    } catch (e) {
+        console.error("Ошибка загрузки тикетов клиента:", e);
+    }
+}
+
+    // Добавим глобальную переменную для хранения ID назначения
+    let activeAssignmentId = null;
+
+    async function loadSupportTickets() {
+    try {
+        // Выбираем эндпоинт в зависимости от роли
+        const endpoint = (userRole === 'admin') ? '/tickets/all' : '/tickets/all'; 
+        // Примечание: так как ваш @app.get("/tickets/all") теперь сам фильтрует 
+        // данные по роли внутри Python, используем его.
+        
+        const res = await fetch(endpoint, { 
+            headers: { 'Authorization': `Bearer ${accessToken}` } 
+        });
+        
+        if (!res.ok) throw new Error("Ошибка загрузки данных");
+        
+        const tickets = await res.json();
+        const container = document.getElementById('support-tickets-list');
+        
+        if (!tickets || tickets.length === 0) {
+            container.innerHTML = '<div class="text-muted text-center p-3">Нет доступных обращений</div>';
+            return;
+        }
+
+        container.innerHTML = tickets.map(t => {
+            // КРИТИЧЕСКИЙ МОМЕНТ:
+            // Если мы саппорт, берем active_assignment_id из бэкенда.
+            // Если мы админ и этого поля нет, используем t.id (но админу нужен свой метод закрытия)
+            const assignId = t.active_assignment_id || t.id;
+            
+            // Определяем активен ли этот тикет в данный момент в интерфейсе
+            const isActive = activeTicketId === t.id ? 'active-ticket' : '';
+            const statusClass = getStatusClass(t.status);
+
+            return `
+                <div onclick="selectTicketForSupport(${t.id}, '${t.status}', ${assignId})" 
+                    class="list-group-item list-group-item-action clickable-ticket mb-2 rounded border-start border-4 ${isActive} ${t.status === 'closed' ? 'border-secondary' : 'border-warning'}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong class="text-dark">#${t.id}</strong>
+                            <span class="badge ${statusClass} ms-2">${t.status}</span>
+                        </div>
+                        <small class="text-muted">${t.created_at || ''}</small>
+                    </div>
+                    <div class="ticket-preview mt-1 text-truncate" style="max-width: 250px;">
+                        ${escapeHtml(t.text || 'Нет описания')}
+                    </div>
+                    ${t.department_name ? `<div class="small text-primary mt-1">📍 ${t.department_name}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        console.error("Ошибка загрузки тикетов:", e);
+        document.getElementById('support-tickets-list').innerHTML = 
+            '<div class="text-danger text-center p-3">Ошибка при получении списка</div>';
+    }
+}
+
+    // Новая вспомогательная функция для саппорта
+    window.selectTicketForSupport = function(ticketId, status, assignmentId) {
+        activeAssignmentId = assignmentId; // Сохраняем ID назначения!
+        openChat(ticketId, status, 'support');
+    };
+
+    async function closeTicket() {
+        const isSupport = userRole === 'support';
+        const isAdmin = userRole === 'admin';
+        
+        // Определяем, какой ID использовать и на какой URL слать запрос
+        let url = "";
+        if (isSupport) {
+            if (!activeAssignmentId) return alert("Ошибка: ID назначения не найден.");
+            url = `/tickets/assignments/${activeAssignmentId}/resolve`;
+        } else if (isAdmin) {
+            if (!activeTicketId) return alert("Ошибка: ID тикета не найден.");
+            url = `/tickets/${activeTicketId}/admin-close`;
+        } else {
+            return; // Обычный юзер не может закрывать
+        }
+
+        if (!confirm("Вы подтверждаете завершение работы над этим тикетом?")) return;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert(result.message || "Работа завершена");
+                
+                // Сбрасываем состояние чата и скрываем окно
+                activeTicketId = null;
+                activeAssignmentId = null;
+                document.getElementById('common-chat-window').classList.add('hidden');
+                
+                // Обновляем данные на экране
+                if (isAdmin) refreshAdminStats();
+                loadSupportTickets();
+            } else {
+                alert("Ошибка: " + (result.detail || "Не удалось закрыть тикет"));
+            }
+        } catch (e) {
+            console.error("Ошибка запроса:", e);
+            alert("Произошла ошибка при связи с сервером");
+        }
+    }
+
+    let currentTicketDepartments = []; 
+
+    window.openChat = async function(ticketId, status, roleFrom) {
+        activeTicketId = ticketId;
+        activeTicketStatus = status;
+        
+        try {
+            // Запрашиваем данные тикета
+            const res = await fetch(`/tickets/${ticketId}`, { 
+                headers: { 'Authorization': `Bearer ${accessToken}` } 
+            });
+            const ticketData = await res.json();
+            
+            // Сохраняем департаменты, которые определил классификатор
+            // Предполагаем, что сервер возвращает их в поле 'departments'
+            currentTicketDepartments = ticketData.departments || [];
+            
+            console.log("Категории тикета:", currentTicketDepartments);
+        } catch (e) {
+            console.error("Ошибка при получении категорий:", e);
+            currentTicketDepartments = [];
+        }
+
+        // Логика отображения интерфейса чата (остается прежней)
+        const actions = document.getElementById('support-actions');
+        if (userRole === 'support' || userRole === 'admin') actions.classList.remove('hidden');
+        else actions.classList.add('hidden');
+
+        const chatWindow = document.getElementById('common-chat-window');
+        chatWindow.classList.remove('hidden');
+        if (userRole === 'user') document.getElementById('client-chat-placeholder').appendChild(chatWindow);
+        else document.getElementById('support-chat-placeholder').appendChild(chatWindow);
+        
+        document.getElementById('chat-ticket-id').innerText = `Чат #${ticketId}`;
+        document.getElementById('chat-ticket-status').innerHTML = `Статус: <span class="badge ${getStatusClass(status)}">${status}</span>`;
+        await loadMessages();
+    };
+
+    async function loadMessages() {
+        if (!activeTicketId) return;
+        const res = await fetch(`/tickets/${activeTicketId}/messages`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        const messages = await res.json();
+        const msgDiv = document.getElementById('chat-messages');
+        msgDiv.innerHTML = messages.map(m => {
+            const isMy = (m.sender === 'user' && userRole === 'user') || (m.sender === 'support' && userRole !== 'user');
+            return `<div class="d-flex ${isMy ? 'justify-content-end' : 'justify-content-start'} mb-3">
+                <div class="message-bubble rounded-3 p-3 shadow-sm" style="background: ${isMy ? '#0d6efd' : '#e9ecef'}; color: ${isMy ? '#fff' : '#000'}">
+                    <div class="small fw-bold">${m.sender}</div>
+                    <div>${escapeHtml(m.text)}</div>
+                </div>
+            </div>`;
+        }).join('');
+        msgDiv.scrollTop = msgDiv.scrollHeight;
+    }
+
+    async function sendReply() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        
+        if (!text || !activeTicketId) return;
+
+        try {
+            const response = await fetch(`/tickets/${activeTicketId}/messages`, {
+                method: 'POST',
+                headers: { 
+                    // УБРАНЫ лишние скобки [], которые ломали авторизацию
+                    'Authorization': `Bearer ${accessToken}`, 
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({ text: text })
+            });
+
+            if (response.ok) {
+                input.value = '';
+                await loadMessages();
+            } else {
+                const error = await response.json();
+                alert("Ошибка: " + (error.detail || "Нет доступа"));
+            }
+        } catch (e) {
+            console.error("Ошибка сети:", e);
+        }
+    }
+
+    async function openReassignModal() {
+        if (!reassignModalInstance) {
+            reassignModalInstance = new bootstrap.Modal(document.getElementById('reassignModal'));
+        }
+
+        try {
+            // Запрашиваем актуальные категории из БД
+            const res = await fetch(`/tickets/${activeTicketId}/current-departments`, { 
+                headers: { 'Authorization': `Bearer ${accessToken}` } 
+            });
+            const activeDepts = await res.json(); // Получаем массив ["Доставка", "Цена"]
+
+            // Находим все чекбоксы в модальном окне
+            const checkboxes = document.querySelectorAll('#dept-checkboxes .form-check-input');
+            
+            checkboxes.forEach(cb => {
+                // Проверяем, есть ли значение чекбокса в списке из БД
+                // trim() и toLowerCase() добавлены для защиты от ошибок в регистрах
+                cb.checked = activeDepts.some(dept => 
+                    dept.trim().toLowerCase() === cb.value.trim().toLowerCase()
+                );
+            });
+
+            reassignModalInstance.show();
+        } catch (e) {
+            console.error("Ошибка при получении категорий из БД:", e);
+            alert("Не удалось загрузить текущие категории");
+        }
+    }
+
+    async function confirmReassignment() {
+        const selectedDepts = Array.from(document.querySelectorAll('#dept-checkboxes input:checked'))
+                                .map(cb => cb.value);
+        
+        if (selectedDepts.length === 0) return alert("Выберите хотя бы один отдел");
+        if (!activeAssignmentId) return alert("Ошибка: Не выбран активный тикет");
+
+        try {
+            const res = await fetch(`/tickets/assignments/${activeAssignmentId}/reassign_multiple`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${accessToken}`, 
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({ new_departments: selectedDepts })
+            });
+
+            if (res.ok) { 
+                const data = await res.json();
+                alert("Тикет переадресован");
+                reassignModalInstance.hide();
+                
+                // Очищаем активный экран, так как текущее назначение аннулировано
+                activeTicketId = null;
+                activeAssignmentId = null;
+                document.getElementById('common-chat-window').classList.add('hidden');
+                
+                loadSupportTickets();
+            } else {
+                const error = await res.json();
+                alert("Ошибка: " + (error.detail || "Ошибка сервера"));
+            }
+        } catch (e) {
+            console.error("Ошибка сети при переадресации:", e);
+        }
+    }
+
+    
+
+    function getStatusClass(status) {
+        if (status === 'open') return 'bg-success';
+        if (status === 'distributed') return 'bg-warning text-dark';
+        if (status === 'closed') return 'bg-secondary';
+        return 'bg-info';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function startAutoRefresh() {
+        messagesInterval = setInterval(() => { if(activeTicketId) loadMessages(); if(userRole === 'admin') refreshAdminStats(); }, 5000);
+    }
+    
+    function startTicketsRefresh() {
+        ticketsRefreshInterval = setInterval(() => { if(userRole === 'user') loadClientTickets(); else loadSupportTickets(); }, 10000);
+    }
+
+    // Переключение между входом и регистрацией
+    document.getElementById('toggle-link').onclick = (e) => {
+    e.preventDefault();
+    isLoginMode = !isLoginMode;
+    const title = document.getElementById('auth-title');
+    const btn = document.getElementById('auth-btn');
+    const link = document.getElementById('toggle-link');
+
+    if (isLoginMode) {
+        title.innerText = "Вход в систему";
+        btn.innerText = "Войти";
+        link.innerText = "Нет аккаунта? Регистрация";
+    } else {
+        title.innerText = "Регистрация";
+        btn.innerText = "Создать аккаунт";
+        link.innerText = "Уже есть аккаунт? Войти";
+    }
+};
+</script>
+</body>
+</html>

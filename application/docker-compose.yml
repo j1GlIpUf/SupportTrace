@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sasha
+      POSTGRES_PASSWORD: 3256
+      POSTGRES_DB: app_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./model:/app/model
+    environment:
+      # Убираем пробелы, кавычки и приводим данные к тем, что в сервисе db
+      - SQLALCHEMY_DATABASE_URL=postgresql://sasha:3256@db:5432/app_db
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
