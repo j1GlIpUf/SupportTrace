@@ -15,7 +15,6 @@ services:
     volumes:
       - ./model:/app/model
     environment:
-      # Убираем пробелы, кавычки и приводим данные к тем, что в сервисе db
       - SQLALCHEMY_DATABASE_URL=postgresql://sasha:3256@db:5432/app_db
       - PYTHONUNBUFFERED=1
     depends_on:
